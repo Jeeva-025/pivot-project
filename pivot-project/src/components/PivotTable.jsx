@@ -10,6 +10,8 @@ const PivotTable = ({
   const [pivotTableData, setPivotTableData] = useState([]);
   const [tableHeaders, setTableHeaders] = useState([]);
   const [headerHierarchy, setHeaderHierarchy] = useState([]);
+  const [rowHierarchy, setRowHierarchy] = useState([]);
+  const [rowHeader, setRowHeader] = useState([]);
 
   const [mainHeaders, setMainHeaders] = useState([]);
   const [subHeaders, setSubHeaders] = useState([]);
@@ -17,7 +19,15 @@ const PivotTable = ({
   console.log(pivotAggregation);
 
   useEffect(() => {
-    if (!pivotValues.length) return;
+    if (
+      !pivotValues.length ||
+      (!pivotCols.length && !pivotRows.length) ||
+      !pivotRows.length
+    ) {
+      setPivotTableData([]);
+      setHeaderHierarchy([]);
+      return;
+    }
     console.log("hello");
 
     const pivotMap = {};
@@ -143,10 +153,12 @@ const PivotTable = ({
     setPivotTableData(finalPivotData);
 
     setHeaderHierarchy(buildHeaderHierarchy(sortedCols));
+    setRowHierarchy(buildHeaderHierarchy(sortedRows));
+    console.log(pivotMap);
   }, [tableData, pivotRows, pivotCols, pivotValues, pivotAggregation]);
 
   useEffect(() => {
-    if (headerHierarchy.length > 1) {
+    if (headerHierarchy.length > 1 || rowHierarchy.length > 1) {
       const allHeaders = [pivotRows.join("-") || "Row"];
 
       const buildCompleteHeaders = (hierarchy) => {
@@ -167,86 +179,194 @@ const PivotTable = ({
       };
 
       const completeHeaders = buildCompleteHeaders(headerHierarchy);
-      completeHeaders.push("Grand Total");
+      if (completeHeaders.length > 1) completeHeaders.push("Grand Total");
 
+      const rows = buildCompleteHeaders(rowHierarchy);
+      setRowHeader(rows);
+
+      const finalHeaders = [...allHeaders, ...completeHeaders];
       setTableHeaders([...allHeaders, ...completeHeaders]);
+
+      if (rowHierarchy.length > 1) {
+        console.log("helleo");
+        console.log(rowHeader);
+        const updatedPivotData = [];
+        console.log(finalHeaders[0]);
+
+        rows.forEach((key) => {
+          const rowKeyParts = key.split("-");
+          const matchKey = rowKeyParts.join(" - ");
+          console.log(key);
+
+          const existingRow = pivotTableData.find(
+            (row) => row[finalHeaders[0]] === matchKey
+          );
+          console.log(existingRow);
+
+          if (!existingRow) {
+            updatedPivotData.push({
+              [finalHeaders[0]]: matchKey,
+              ...Object.fromEntries(
+                finalHeaders.slice(1).map((header) => [header, 0])
+              ),
+            });
+          } else {
+            updatedPivotData.push(existingRow);
+          }
+        });
+
+        updatedPivotData.push(pivotTableData[pivotTableData.length - 1]);
+        if (updatedPivotData.length) console.log(updatedPivotData);
+
+        setPivotTableData(updatedPivotData);
+      }
     }
-  }, [headerHierarchy]);
+  }, [headerHierarchy, rowHierarchy]);
 
   if (tableHeaders.length) console.log(tableHeaders);
   if (pivotTableData.length) console.log(pivotTableData);
   if (headerHierarchy.length) console.log(headerHierarchy);
+  if (rowHierarchy.length) console.log(rowHierarchy);
+  if (rowHeader.length) console.log(rowHeader);
 
   if (completePivotTableData.length) console.log(completePivotTableData);
 
+  const getParent = (header, hierarchy) => {
+    const parts = header.split(" - ");
+    const parent = parts[0];
+    for (let i = 0; i < hierarchy[0].length; i++) {
+      if (hierarchy[0][i] === parent) return i;
+    }
+    return -1;
+  };
+
+  const calculateRowSpan = (level, rowHierarchy) => {
+    if (level === rowHierarchy.length - 1) return 1;
+
+    const remainingLevels = rowHierarchy.slice(level + 1);
+    return remainingLevels.reduce((acc, lvl) => acc * lvl.length, 1);
+  };
+  let status = true;
+
   return (
-    <table className="table-auto border-collapse w-full mt-4">
-      <thead>
-        {headerHierarchy.map((level, levelIndex) => {
-          const repeatFactor = headerHierarchy
-            .slice(0, levelIndex)
-            .reduce((acc, lvl) => acc * lvl.length, 1);
+    <div className=" overflow-auto no-scrollbar p-4">
+      <table className="border-collapse w-full mt-4 overflow-x-hidden ">
+        <thead>
+          {headerHierarchy.map((level, levelIndex) => {
+            const repeatFactor = headerHierarchy
+              .slice(0, levelIndex)
+              .reduce((acc, lvl) => acc * lvl.length, 1);
 
-          return (
-            <tr key={levelIndex}>
-              {levelIndex === 0 && (
-                <th
-                  rowSpan={headerHierarchy.length}
-                  className="border p-2 bg-gray-200"
-                >
-                  {pivotRows.join("-") || "Row"}
-                </th>
-              )}
+            return (
+              <tr key={levelIndex}>
+                {levelIndex === 0 &&
+                  pivotRows.map((each) => (
+                    <th
+                      rowSpan={headerHierarchy.length}
+                      colSpan={1}
+                      className="border p-2 bg-gray-200"
+                    >
+                      {each || "Row"}
+                    </th>
+                  ))}
 
-              {Array(repeatFactor)
-                .fill(null)
-                .flatMap(() =>
-                  level.map((header, headerIndex) => {
-                    const nextLevels = headerHierarchy.slice(levelIndex + 1);
-                    const colSpan = nextLevels.length
-                      ? nextLevels.reduce((acc, lvl) => acc * lvl.length, 1)
-                      : 1;
+                {Array(repeatFactor)
+                  .fill(null)
+                  .flatMap(() =>
+                    level.map((header, headerIndex) => {
+                      const nextLevels = headerHierarchy.slice(levelIndex + 1);
+                      const colSpan = nextLevels.length
+                        ? nextLevels.reduce((acc, lvl) => acc * lvl.length, 1)
+                        : 1;
 
-                    return (
-                      <th
-                        key={`${levelIndex}-${headerIndex}`}
-                        colSpan={colSpan}
-                        rowSpan={
-                          levelIndex === headerHierarchy.length - 1 ? 1 : 1
-                        }
-                        className="border p-2 bg-gray-200 capitalize"
-                      >
-                        {header}
-                      </th>
-                    );
-                  })
+                      return (
+                        <th
+                          key={`${levelIndex}-${headerIndex}`}
+                          colSpan={colSpan}
+                          rowSpan={1}
+                          className="border p-2 bg-gray-200 capitalize"
+                        >
+                          {header}
+                        </th>
+                      );
+                    })
+                  )}
+
+                {levelIndex === 0 && headerHierarchy[0].length > 1 && (
+                  <th
+                    rowSpan={headerHierarchy.length}
+                    className="border p-2 bg-gray-200 capitalize"
+                  >
+                    Grand Total
+                  </th>
                 )}
+              </tr>
+            );
+          })}
+        </thead>
 
-              {levelIndex === 0 && headerHierarchy[0].length > 1 && (
-                <th
-                  rowSpan={headerHierarchy.length}
-                  className="border p-2 bg-gray-200 capitalize"
-                >
-                  Grand Total
-                </th>
-              )}
-            </tr>
-          );
-        })}
-      </thead>
+        <tbody>
+          {pivotTableData.map((row, rowIndex) => {
+            const rowKey = row[tableHeaders[0]];
+            const parentIndex = getParent(rowKey, rowHierarchy);
+            console.log(parentIndex);
+            const parts = rowKey.split(" - ");
 
-      <tbody>
-        {pivotTableData.map((row, rowIndex) => (
-          <tr key={rowIndex}>
-            {tableHeaders.map((header, colIndex) => (
-              <td key={colIndex} className="border p-2">
-                {row[header] !== undefined ? row[header] : 0}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
+            return (
+              <tr key={rowIndex}>
+                {rowHierarchy.map((level, levelIndex) => {
+                  const currentHeader = parts[levelIndex] || "";
+                  const isFirstOccurrence =
+                    (rowIndex === 0 ||
+                      parts[levelIndex] !==
+                        pivotTableData[rowIndex - 1][tableHeaders[0]].split(
+                          " - "
+                        )[levelIndex]) &&
+                    rowKey !== "Grand Total";
+
+                  if (isFirstOccurrence) {
+                    console.log(currentHeader);
+                    const rowSpan = calculateRowSpan(
+                      levelIndex,
+
+                      rowHierarchy
+                    );
+                    console.log(rowSpan);
+                    return (
+                      <td
+                        key={`${rowIndex}-${levelIndex}`}
+                        rowSpan={rowSpan}
+                        colSpan={1}
+                        className="border p-2 capitalize"
+                      >
+                        {currentHeader}
+                      </td>
+                    );
+                  } else if (parentIndex === -1 && status) {
+                    status = false;
+                    console.log("hi", currentHeader);
+                    return (
+                      <td
+                        key={`${rowIndex}-${levelIndex}`}
+                        colSpan={rowHierarchy.length}
+                        className="border p-2 capitalize"
+                      >
+                        Grand Total
+                      </td>
+                    );
+                  }
+                })}
+                {tableHeaders.slice(1).map((header, colIndex) => (
+                  <td key={`${rowIndex}-${colIndex}`} className="border p-2">
+                    {row[header] !== undefined ? row[header] : 0}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 };
 
