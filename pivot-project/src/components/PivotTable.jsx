@@ -26,6 +26,8 @@ const PivotTable = ({
     ) {
       setPivotTableData([]);
       setHeaderHierarchy([]);
+      setTableHeaders([]);
+      setRowHierarchy([]);
       return;
     }
     console.log("hello");
@@ -162,6 +164,7 @@ const PivotTable = ({
       const allHeaders = [pivotRows.join("-") || "Row"];
 
       const buildCompleteHeaders = (hierarchy) => {
+        if (hierarchy.length === 0) return [];
         const headers = [];
         const currentLevel = hierarchy[0];
 
